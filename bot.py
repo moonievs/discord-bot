@@ -9,8 +9,6 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 from discord import app_commands
-from flask import Flask
-import threading
 
 # Suppress the oauth2client warning
 logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
@@ -42,7 +40,7 @@ import tempfile
 
 GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
 if GOOGLE_SHEETS_CREDENTIALS:
-    # On Replit, write the credentials to a temporary file
+    # On hosted platforms, write the credentials to a temporary file
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
         json.dump(json.loads(GOOGLE_SHEETS_CREDENTIALS), temp_file)
         temp_file_path = temp_file.name
@@ -61,21 +59,6 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 # Cached data
 log_filters_cache = None
 recent_logs = []  # Store the most recent /logs output
-
-# Flask app to keep the Replit app awake
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot is alive!"
-
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8080)))
-
-# Start Flask in a separate thread
-flask_thread = threading.Thread(target=run_flask)
-flask_thread.daemon = True
-flask_thread.start()
 
 def upload_image_to_imgur(image_url: str) -> str:
     """Upload an image to Imgur with retry."""
@@ -149,7 +132,9 @@ def get_month_summary(month_abbr: str) -> tuple[bool, str, str, str, str]:
         result = sheets_service.spreadsheets().values().batchGet(
             spreadsheetId=GOOGLE_SHEETS_ID, ranges=[f"{month_short}!Q15", f"{month_short}!Q18", f"{month_short}!Q21"]).execute()
         value_ranges = result.get('valueRanges', [])
-        earned = value_ranges[0].get('values', [['$0.00']])[0][0]
+        earned = value_ranges[0].get('values', [['$0.00']]
+```python
+])[0][0]
         pending = value_ranges[1].get('values', [['$0.00']])[0][0]
         work_done = value_ranges[2].get('values', [['0']])[0][0]
         return True, month_full, earned, pending, work_done
