@@ -76,7 +76,7 @@ async def upload_image_to_imgbb(image_url: str) -> str:
         except requests.RequestException as e:
             logger.error(f"Attempt {attempt + 1}/3 - Error uploading image: {e}")
             if attempt < 2:
-                await asyncio.sleep(2)  # Proper async delay
+                await asyncio.sleep(2)
             else:
                 logger.error("All retries failed.")
                 return None
@@ -250,17 +250,20 @@ async def on_message(message):
     if message.author == bot.user:
         return
     if message.attachments:
+        # Process only the first PNG attachment per message
         for attachment in message.attachments:
             if attachment.filename.lower().endswith(".png"):
-                img_link = await upload_image_to_imgbb(attachment.url)  # Updated to ImgBB
+                img_link = await upload_image_to_imgbb(attachment.url)
                 if img_link:
                     embed = discord.Embed(color=discord.Color.dark_grey())
-                    embed.add_field(name="ImgBB Link", value=f"`{img_link}`", inline=False)  # Updated label
+                    embed.add_field(name="ImgBB Link", value=f"`{img_link}`", inline=False)
                     await message.channel.send(embed=embed)
                 else:
-                    await message.channel.send("Failed to upload to ImgBB. Please try again.")  # Updated message
+                    await message.channel.send("Failed to upload to ImgBB. Please try again.")
+                break  # Exit after first PNG—stops double sends
             else:
                 await message.channel.send("Please send a PNG image.")
+                break  # Exit after first non-PNG—avoids spamming
 
 async def creator_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     creators = get_log_filters()
@@ -453,7 +456,7 @@ async def nuke_slash(interaction: discord.Interaction):
 @bot.tree.command(name="help", description="Display available commands.")
 async def help_slash(interaction: discord.Interaction):
     embed = discord.Embed(title="Bot Commands", color=discord.Color.blue())
-    embed.add_field(name="Image Upload", value="Send PNG for ImgBB link.", inline=False)  # Updated label
+    embed.add_field(name="Image Upload", value="Send PNG for ImgBB link.", inline=False)
     embed.add_field(name="/sync", value="Manually sync commands (admin only).", inline=False)
     embed.add_field(name="/add", value="Add record to Sheets.", inline=False)
     embed.add_field(name="/removerecent", value="Remove recent records.", inline=False)
