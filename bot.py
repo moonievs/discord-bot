@@ -23,6 +23,14 @@ DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 IMGUR_CLIENT_ID = os.getenv("IMGUR_CLIENT_ID")
 GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID")
 GUILD_ID = os.getenv("GUILD_ID")
+GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
+
+# Debug: Print env vars to logs
+print(f"DISCORD_BOT_TOKEN: {DISCORD_BOT_TOKEN}")
+print(f"IMGUR_CLIENT_ID: {IMGUR_CLIENT_ID}")
+print(f"GOOGLE_SHEETS_ID: {GOOGLE_SHEETS_ID}")
+print(f"GOOGLE_SHEETS_CREDENTIALS: {GOOGLE_SHEETS_CREDENTIALS[:50] if GOOGLE_SHEETS_CREDENTIALS else None}...")  # Truncate for logs
+print(f"GUILD_ID: {GUILD_ID}")
 
 if not all([DISCORD_BOT_TOKEN, IMGUR_CLIENT_ID, GOOGLE_SHEETS_ID]):
     logger.error("Missing environment variables.")
@@ -38,11 +46,10 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 import json
 import tempfile
 
-GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
 if GOOGLE_SHEETS_CREDENTIALS:
     # On hosted platforms, write the credentials to a temporary file
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
-        json.dump(json.loads(GOGLE_SHEETS_CREDENTIALS), temp_file)
+        json.dump(json.loads(GOOGLE_SHEETS_CREDENTIALS), temp_file)
         temp_file_path = temp_file.name
     creds = service_account.Credentials.from_service_account_file(temp_file_path, scopes=SCOPES)
     os.unlink(temp_file_path)  # Delete the temporary file
