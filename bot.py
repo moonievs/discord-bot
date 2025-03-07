@@ -20,19 +20,17 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-IMGUR_CLIENT_ID = os.getenv("IMGUR_CLIENT_ID")
 GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID")
 GUILD_ID = os.getenv("GUILD_ID")
 GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
 
 # Debug: Print env vars to logs
 print(f"DISCORD_BOT_TOKEN: {DISCORD_BOT_TOKEN}")
-print(f"IMGUR_CLIENT_ID: {IMGUR_CLIENT_ID}")
 print(f"GOOGLE_SHEETS_ID: {GOOGLE_SHEETS_ID}")
 print(f"GOOGLE_SHEETS_CREDENTIALS: {GOOGLE_SHEETS_CREDENTIALS[:50] if GOOGLE_SHEETS_CREDENTIALS else None}...")
 print(f"GUILD_ID: {GUILD_ID}")
 
-if not all([DISCORD_BOT_TOKEN, IMGUR_CLIENT_ID, GOOGLE_SHEETS_ID]):
+if not all([DISCORD_BOT_TOKEN, GOOGLE_SHEETS_ID]):
     logger.error("Missing environment variables.")
     exit(1)
 
@@ -65,20 +63,20 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 log_filters_cache = None
 recent_logs = []
 
-async def upload_image_to_imgur(image_url: str) -> str:
-    """Upload an image to Imgur with retry and proper async delay."""
+async def upload_image_to_imgbb(image_url: str) -> str:
+    """Upload an image to ImgBB with retry and proper async delay."""
+    api_key = "7ee1d7413ff2b101d7d3ffab0319bda0"  # Your ImgBB API key
     for attempt in range(3):
         try:
-            headers = {"Authorization": f"Client-ID {IMGUR_CLIENT_ID}"}
-            response = requests.post("https://api.imgur.com/3/upload", headers=headers, data={"image": image_url, "type": "url"}, timeout=5)
+            response = requests.post("https://api.imgbb.com/1/upload", data={"key": api_key, "image": image_url}, timeout=5)
             response.raise_for_status()
-            link = response.json()["data"]["link"]
-            logger.info(f"Uploaded image to Imgur: {link}")
+            link = response.json()["data"]["url"]
+            logger.info(f"Uploaded image to ImgBB: {link}")
             return link
         except requests.RequestException as e:
             logger.error(f"Attempt {attempt + 1}/3 - Error uploading image: {e}")
             if attempt < 2:
-                await asyncio.sleep(2)  # Fixed: added await for proper delay
+                await asyncio.sleep(2)  # Proper async delay
             else:
                 logger.error("All retries failed.")
                 return None
@@ -254,13 +252,13 @@ async def on_message(message):
     if message.attachments:
         for attachment in message.attachments:
             if attachment.filename.lower().endswith(".png"):
-                img_link = await upload_image_to_imgur(attachment.url)  # Fixed: added await
+                img_link = await upload_image_to_imgbb(attachment.url)  # Updated to ImgBB
                 if img_link:
                     embed = discord.Embed(color=discord.Color.dark_grey())
-                    embed.add_field(name="Imgur Link", value=f"`{img_link}`", inline=False)
+                    embed.add_field(name="ImgBB Link", value=f"`{img_link}`", inline=False)  # Updated label
                     await message.channel.send(embed=embed)
                 else:
-                    await message.channel.send("Failed to upload to Imgur. Please try again.")
+                    await message.channel.send("Failed to upload to ImgBB. Please try again.")  # Updated message
             else:
                 await message.channel.send("Please send a PNG image.")
 
@@ -455,7 +453,7 @@ async def nuke_slash(interaction: discord.Interaction):
 @bot.tree.command(name="help", description="Display available commands.")
 async def help_slash(interaction: discord.Interaction):
     embed = discord.Embed(title="Bot Commands", color=discord.Color.blue())
-    embed.add_field(name="Image Upload", value="Send PNG for Imgur link.", inline=False)
+    embed.add_field(name="Image Upload", value="Send PNG for ImgBB link.", inline=False)  # Updated label
     embed.add_field(name="/sync", value="Manually sync commands (admin only).", inline=False)
     embed.add_field(name="/add", value="Add record to Sheets.", inline=False)
     embed.add_field(name="/removerecent", value="Remove recent records.", inline=False)
