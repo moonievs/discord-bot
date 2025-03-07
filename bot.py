@@ -42,7 +42,7 @@ GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
 if GOOGLE_SHEETS_CREDENTIALS:
     # On hosted platforms, write the credentials to a temporary file
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
-        json.dump(json.loads(GOOGLE_SHEETS_CREDENTIALS), temp_file)
+        json.dump(json.loads(GOGLE_SHEETS_CREDENTIALS), temp_file)
         temp_file_path = temp_file.name
     creds = service_account.Credentials.from_service_account_file(temp_file_path, scopes=SCOPES)
     os.unlink(temp_file_path)  # Delete the temporary file
@@ -132,9 +132,7 @@ def get_month_summary(month_abbr: str) -> tuple[bool, str, str, str, str]:
         result = sheets_service.spreadsheets().values().batchGet(
             spreadsheetId=GOOGLE_SHEETS_ID, ranges=[f"{month_short}!Q15", f"{month_short}!Q18", f"{month_short}!Q21"]).execute()
         value_ranges = result.get('valueRanges', [])
-        earned = value_ranges[0].get('values', [['$0.00']]
-```python
-])[0][0]
+        earned = value_ranges[0].get('values', [['$0.00']])[0][0]
         pending = value_ranges[1].get('values', [['$0.00']])[0][0]
         work_done = value_ranges[2].get('values', [['0']])[0][0]
         return True, month_full, earned, pending, work_done
