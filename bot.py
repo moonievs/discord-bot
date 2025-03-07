@@ -62,10 +62,11 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 # Cached data
 log_filters_cache = None
 recent_logs = []
+processed_message_ids = set()  # New: Track processed messages
 
 async def upload_image_to_imgbb(image_url: str) -> str:
     """Upload an image to ImgBB with retry and proper async delay."""
-    api_key = "7ee1d7413ff2b101d7d3ffab0319bda0"  # Your ImgBB API key
+    api_key = "7ee1d7413ff2b101d7d3ffab0319bda0"
     for attempt in range(3):
         try:
             response = requests.post("https://api.imgbb.com/1/upload", data={"key": api_key, "image": image_url}, timeout=5)
@@ -247,10 +248,15 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
+    global processed_message_ids
     if message.author == bot.user:
         return
+    if message.id in processed_message_ids:
+        logger.info(f"Skipping duplicate message ID: {message.id}")
+        return
     if message.attachments:
-        # Process only the first PNG attachment per message
+        processed_message_ids.add(message.id)
+        logger.info(f"Processing message ID: {message.id}")
         for attachment in message.attachments:
             if attachment.filename.lower().endswith(".png"):
                 img_link = await upload_image_to_imgbb(attachment.url)
@@ -260,10 +266,10 @@ async def on_message(message):
                     await message.channel.send(embed=embed)
                 else:
                     await message.channel.send("Failed to upload to ImgBB. Please try again.")
-                break  # Exit after first PNG—stops double sends
+                break
             else:
                 await message.channel.send("Please send a PNG image.")
-                break  # Exit after first non-PNG—avoids spamming
+                break
 
 async def creator_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     creators = get_log_filters()
