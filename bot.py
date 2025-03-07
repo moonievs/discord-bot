@@ -62,7 +62,6 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 # Cached data
 log_filters_cache = None
 recent_logs = []
-processed_message_ids = set()
 
 async def upload_image_to_imgbb(image_url: str) -> str:
     """Upload an image to ImgBB with retry and proper async delay."""
@@ -246,39 +245,7 @@ async def on_ready():
     except Exception as e:
         logger.error(f"Sync failed: {e}")
 
-@bot.event
-async def on_message(message):
-    global processed_message_ids
-    logger.info(f"on_message triggered - Message ID: {message.id}, Author: {message.author}, Content: '{message.content}', Attachments: {len(message.attachments)}")
-    if message.author == bot.user:
-        logger.info(f"Skipping self-message - ID: {message.id}")
-        return
-    if message.id in processed_message_ids:
-        logger.info(f"Skipping duplicate message - ID: {message.id}")
-        return
-    if message.attachments:
-        logger.info(f"Processing new message - ID: {message.id}")
-        processed_message_ids.add(message.id)
-        for attachment in message.attachments:
-            logger.info(f"Checking attachment - Filename: {attachment.filename}, URL: {attachment.url}")
-            if attachment.filename.lower().endswith(".png"):
-                logger.info(f"Found PNG - Starting upload for ID: {message.id}")
-                img_link = await upload_image_to_imgbb(attachment.url)
-                if img_link:
-                    embed = discord.Embed(color=discord.Color.dark_grey())
-                    embed.add_field(name="ImgBB Link", value=f"`{img_link}`", inline=False)
-                    logger.info(f"Sending embed for ID: {message.id} - Link: {img_link}")
-                    await message.channel.send(embed=embed)
-                else:
-                    logger.info(f"Upload failed for ID: {message.id}")
-                    await message.channel.send("Failed to upload to ImgBB. Please try again.")
-                break
-            else:
-                logger.info(f"Non-PNG attachment for ID: {message.id}")
-                await message.channel.send("Please send a PNG image.")
-                break
-    else:
-        logger.info(f"No attachments in message - ID: {message.id}")
+# Removed on_message entirely
 
 async def creator_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     creators = get_log_filters()
@@ -296,6 +263,26 @@ async def link_autocomplete(interaction: discord.Interaction, current: str) -> l
         return []
     short_links = [log[1].split('/')[-1] for log in recent_logs]
     return [app_commands.Choice(name=link, value=link) for link in short_links if current.lower() in link.lower()][:25]
+
+@bot.tree.command(name="upload", description="Upload a PNG image to ImgBB.")
+async def upload_slash(interaction: discord.Interaction):
+    await interaction.response.defer()
+    if not interaction.message or not interaction.message.attachments:
+        await interaction.followup.send("Please attach a PNG image to your message when using this command.")
+        return
+    for attachment in interaction.message.attachments:
+        if attachment.filename.lower().endswith(".png"):
+            img_link = await upload_image_to_imgbb(attachment.url)
+            if img_link:
+                embed = discord.Embed(color=discord.Color.dark_grey())
+                embed.add_field(name="ImgBB Link", value=f"`{img_link}`", inline=False)
+                await interaction.followup.send(embed=embed)
+            else:
+                await interaction.followup.send("Failed to upload to ImgBB. Please try again.")
+            return
+        else:
+            await interaction.followup.send("Please attach a PNG image.")
+            return
 
 @bot.tree.command(name="sync", description="Manually sync commands (admin only).")
 async def sync_slash(interaction: discord.Interaction):
@@ -471,7 +458,7 @@ async def nuke_slash(interaction: discord.Interaction):
 @bot.tree.command(name="help", description="Display available commands.")
 async def help_slash(interaction: discord.Interaction):
     embed = discord.Embed(title="Bot Commands", color=discord.Color.blue())
-    embed.add_field(name="Image Upload", value="Send PNG for ImgBB link.", inline=False)
+    embed.add_field(name="/upload", value="Upload a PNG image to ImgBB.", inline=False)
     embed.add_field(name="/sync", value="Manually sync commands (admin only).", inline=False)
     embed.add_field(name="/add", value="Add record to Sheets.", inline=False)
     embed.add_field(name="/removerecent", value="Remove recent records.", inline=False)
