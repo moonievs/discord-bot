@@ -29,7 +29,7 @@ GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
 print(f"DISCORD_BOT_TOKEN: {DISCORD_BOT_TOKEN}")
 print(f"IMGUR_CLIENT_ID: {IMGUR_CLIENT_ID}")
 print(f"GOOGLE_SHEETS_ID: {GOOGLE_SHEETS_ID}")
-print(f"GOOGLE_SHEETS_CREDENTIALS: {GOOGLE_SHEETS_CREDENTIALS[:50] if GOOGLE_SHEETS_CREDENTIALS else None}...")  # Truncate for logs
+print(f"GOOGLE_SHEETS_CREDENTIALS: {GOOGLE_SHEETS_CREDENTIALS[:50] if GOOGLE_SHEETS_CREDENTIALS else None}...")
 print(f"GUILD_ID: {GUILD_ID}")
 
 if not all([DISCORD_BOT_TOKEN, IMGUR_CLIENT_ID, GOOGLE_SHEETS_ID]):
@@ -47,14 +47,12 @@ import json
 import tempfile
 
 if GOOGLE_SHEETS_CREDENTIALS:
-    # On hosted platforms, write the credentials to a temporary file
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
         json.dump(json.loads(GOOGLE_SHEETS_CREDENTIALS), temp_file)
         temp_file_path = temp_file.name
     creds = service_account.Credentials.from_service_account_file(temp_file_path, scopes=SCOPES)
     os.unlink(temp_file_path)  # Delete the temporary file
 else:
-    # Locally, use the service-account.json file
     creds = service_account.Credentials.from_service_account_file('service-account.json', scopes=SCOPES)
 
 sheets_service = build('sheets', 'v4', credentials=creds)
@@ -65,10 +63,10 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 # Cached data
 log_filters_cache = None
-recent_logs = []  # Store the most recent /logs output
+recent_logs = []
 
-def upload_image_to_imgur(image_url: str) -> str:
-    """Upload an image to Imgur with retry."""
+async def upload_image_to_imgur(image_url: str) -> str:
+    """Upload an image to Imgur with retry and proper async delay."""
     for attempt in range(3):
         try:
             headers = {"Authorization": f"Client-ID {IMGUR_CLIENT_ID}"}
@@ -80,7 +78,7 @@ def upload_image_to_imgur(image_url: str) -> str:
         except requests.RequestException as e:
             logger.error(f"Attempt {attempt + 1}/3 - Error uploading image: {e}")
             if attempt < 2:
-                asyncio.sleep(2)
+                await asyncio.sleep(2)  # Fixed: added await for proper delay
             else:
                 logger.error("All retries failed.")
                 return None
@@ -234,11 +232,9 @@ def end_month() -> tuple[bool, str, str, str, str]:
 async def on_ready():
     logger.info(f"Logged in as {bot.user}")
     try:
-        # Debug: Print all registered commands before syncing
         registered_commands = [cmd.name for cmd in bot.tree.get_commands()]
         logger.info(f"Registered commands before sync: {registered_commands}")
 
-        # Guild-specific sync for faster propagation
         if GUILD_ID:
             guild = discord.Object(id=int(GUILD_ID))
             synced = await bot.tree.sync(guild=guild)
@@ -246,7 +242,6 @@ async def on_ready():
         else:
             logger.warning("GUILD_ID not set, skipping guild-specific sync.")
 
-        # Global sync (can take up to an hour to propagate)
         synced = await bot.tree.sync()
         logger.info(f"Synced {len(synced)} commands globally: {[cmd.name for cmd in synced]}")
     except Exception as e:
@@ -259,7 +254,7 @@ async def on_message(message):
     if message.attachments:
         for attachment in message.attachments:
             if attachment.filename.lower().endswith(".png"):
-                img_link = upload_image_to_imgur(attachment.url)
+                img_link = await upload_image_to_imgur(attachment.url)  # Fixed: added await
                 if img_link:
                     embed = discord.Embed(color=discord.Color.dark_grey())
                     embed.add_field(name="Imgur Link", value=f"`{img_link}`", inline=False)
@@ -269,7 +264,6 @@ async def on_message(message):
             else:
                 await message.channel.send("Please send a PNG image.")
 
-# Autocomplete functions
 async def creator_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     creators = get_log_filters()
     return [app_commands.Choice(name=c, value=c) for c in creators if current.lower() in c.lower()][:25]
@@ -287,7 +281,6 @@ async def link_autocomplete(interaction: discord.Interaction, current: str) -> l
     short_links = [log[1].split('/')[-1] for log in recent_logs]
     return [app_commands.Choice(name=link, value=link) for link in short_links if current.lower() in link.lower()][:25]
 
-# Slash commands
 @bot.tree.command(name="sync", description="Manually sync commands (admin only).")
 async def sync_slash(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
@@ -295,13 +288,11 @@ async def sync_slash(interaction: discord.Interaction):
         return
     await interaction.response.defer()
     try:
-        # Guild-specific sync
         if GUILD_ID:
             guild = discord.Object(id=int(GUILD_ID))
             synced = await bot.tree.sync(guild=guild)
             logger.info(f"Manually synced {len(synced)} commands to guild {GUILD_ID}: {[cmd.name for cmd in synced]}")
             await interaction.followup.send(f"Synced {len(synced)} commands to this guild.")
-        # Global sync
         synced = await bot.tree.sync()
         logger.info(f"Manually synced {len(synced)} commands globally: {[cmd.name for cmd in synced]}")
         await interaction.followup.send(f"Synced {len(synced)} commands globally (may take up to an hour to propagate).")
@@ -378,30 +369,26 @@ async def logs_slash(interaction: discord.Interaction, filter: str = None):
         await interaction.followup.send(embed=embed.add_field(name="No Records", value=f"No records{f' for {filter}' if filter else ''}.", inline=False))
         return
 
-    # Store the logs for /getlink and /getimage
     recent_logs = logs
-
-    # Calculate maximum lengths for each column
     creator_width = max(len("Creator"), max((len(log[0]) for log in logs), default=0))
-    link_width = max(len("Link"), max((len(log[1].split('/')[-1]) for log in logs), default=0))  # Only the unique part
+    link_width = max(len("Link"), max((len(log[1].split('/')[-1]) for log in logs), default=0))
     price_width = max(len("Price"), max((len(log[2]) for log in logs), default=0))
     paid_width = max(len("Paid"), max((len("Yes" if log[3].lower() in ["yes", "true"] else "No") for log in logs), default=0))
 
-    # Build the table
     table_content = "```\n"
     table_content += f"{'Creator'.ljust(creator_width)} | {'Link'.ljust(link_width)} | {'Price'.ljust(price_width)} | {'Paid'.ljust(paid_width)}\n"
     table_content += f"{'-' * creator_width} | {'-' * link_width} | {'-' * price_width} | {'-' * paid_width}\n"
     for name, link, price, paid in logs:
         paid_display = "Yes" if paid.lower() in ["yes", "true"] else "No"
-        short_link = link.split('/')[-1]  # Display only the unique part of the URL
+        short_link = link.split('/')[-1]
         table_content += f"{name.ljust(creator_width)} | {short_link.ljust(link_width)} | {price.ljust(price_width)} | {paid_display.ljust(paid_width)}\n"
     table_content += "```\n"
 
-    embed = discord.Embed(title="Logs Overview", description="All non-empty records. Use /getlink to retrieve full URLs or /getimage to display the image.", color=discord.Color.blue())
+    embed = discord.Embed(title="Logs Overview", description="All non-empty records. Use /getlink or /getimage.", color=discord.Color.blue())
     embed.add_field(name="Entries", value=table_content, inline=False)
     await interaction.followup.send(embed=embed)
 
-@bot.tree.command(name="getlink", description="Retrieve the full URL for a link from the most recent /logs output.")
+@bot.tree.command(name="getlink", description="Retrieve the full URL from the most recent /logs output.")
 @app_commands.describe(link="The short link to retrieve (e.g., hv1xR5r.png)")
 @app_commands.autocomplete(link=link_autocomplete)
 async def getlink_slash(interaction: discord.Interaction, link: str):
@@ -411,14 +398,7 @@ async def getlink_slash(interaction: discord.Interaction, link: str):
         await interaction.followup.send("No recent /logs output found. Please run /logs first.")
         return
 
-    # Find the full URL for the selected short link
-    full_link = None
-    for _, log_link, _, _ in recent_logs:
-        short_link = log_link.split('/')[-1]
-        if short_link == link:
-            full_link = log_link
-            break
-
+    full_link = next((log[1] for log in recent_logs if log[1].split('/')[-1] == link), None)
     if full_link:
         embed = discord.Embed(title="Full URL", color=discord.Color.blue())
         embed.add_field(name="Link", value=f"[Click Here]({full_link})", inline=False)
@@ -426,7 +406,7 @@ async def getlink_slash(interaction: discord.Interaction, link: str):
     else:
         await interaction.followup.send(f"Link '{link}' not found in the most recent /logs output.")
 
-@bot.tree.command(name="getimage", description="Display the image for a link from the most recent /logs output.")
+@bot.tree.command(name="getimage", description="Display the image from the most recent /logs output.")
 @app_commands.describe(link="The short link to display (e.g., hv1xR5r.png)")
 @app_commands.autocomplete(link=link_autocomplete)
 async def getimage_slash(interaction: discord.Interaction, link: str):
@@ -436,17 +416,10 @@ async def getimage_slash(interaction: discord.Interaction, link: str):
         await interaction.followup.send("No recent /logs output found. Please run /logs first.")
         return
 
-    # Find the full URL for the selected short link
-    full_link = None
-    for _, log_link, _, _ in recent_logs:
-        short_link = log_link.split('/')[-1]
-        if short_link == link:
-            full_link = log_link
-            break
-
+    full_link = next((log[1] for log in recent_logs if log[1].split('/')[-1] == link), None)
     if full_link:
         embed = discord.Embed(title="Image Display", color=discord.Color.blue())
-        embed.set_image(url=full_link)  # Embed the image directly
+        embed.set_image(url=full_link)
         await interaction.followup.send(embed=embed)
     else:
         await interaction.followup.send(f"Link '{link}' not found in the most recent /logs output.")
