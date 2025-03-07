@@ -62,7 +62,7 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 # Cached data
 log_filters_cache = None
 recent_logs = []
-processed_message_ids = set()  # New: Track processed messages
+processed_message_ids = set()
 
 async def upload_image_to_imgbb(image_url: str) -> str:
     """Upload an image to ImgBB with retry and proper async delay."""
@@ -249,27 +249,36 @@ async def on_ready():
 @bot.event
 async def on_message(message):
     global processed_message_ids
+    logger.info(f"on_message triggered - Message ID: {message.id}, Author: {message.author}, Content: '{message.content}', Attachments: {len(message.attachments)}")
     if message.author == bot.user:
+        logger.info(f"Skipping self-message - ID: {message.id}")
         return
     if message.id in processed_message_ids:
-        logger.info(f"Skipping duplicate message ID: {message.id}")
+        logger.info(f"Skipping duplicate message - ID: {message.id}")
         return
     if message.attachments:
+        logger.info(f"Processing new message - ID: {message.id}")
         processed_message_ids.add(message.id)
-        logger.info(f"Processing message ID: {message.id}")
         for attachment in message.attachments:
+            logger.info(f"Checking attachment - Filename: {attachment.filename}, URL: {attachment.url}")
             if attachment.filename.lower().endswith(".png"):
+                logger.info(f"Found PNG - Starting upload for ID: {message.id}")
                 img_link = await upload_image_to_imgbb(attachment.url)
                 if img_link:
                     embed = discord.Embed(color=discord.Color.dark_grey())
                     embed.add_field(name="ImgBB Link", value=f"`{img_link}`", inline=False)
+                    logger.info(f"Sending embed for ID: {message.id} - Link: {img_link}")
                     await message.channel.send(embed=embed)
                 else:
+                    logger.info(f"Upload failed for ID: {message.id}")
                     await message.channel.send("Failed to upload to ImgBB. Please try again.")
                 break
             else:
+                logger.info(f"Non-PNG attachment for ID: {message.id}")
                 await message.channel.send("Please send a PNG image.")
                 break
+    else:
+        logger.info(f"No attachments in message - ID: {message.id}")
 
 async def creator_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     creators = get_log_filters()
